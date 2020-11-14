@@ -19,6 +19,7 @@ package main
 import (
 	"crypto/tls"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"os"
@@ -48,13 +49,19 @@ func main() {
 	}
 
 	crt, err := tls.LoadX509KeyPair(os.Args[5], os.Args[6])
-	abort(err)
+
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	srvr, err := tls.Listen(os.Args[3], os.Args[4], &tls.Config{
 		Certificates: []tls.Certificate{crt},
 	})
 
-	abort(err)
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	defer srvr.Close()
 	log.Print("tlsify is running")
 
@@ -62,15 +69,16 @@ func main() {
 		clnt, err := srvr.Accept()
 
 		go func() {
-
-			if warn(err) {
+			if err != nil {
+				log.Print(err)
 				return
 			}
 
 			defer clnt.Close()
 			srvc, err := net.Dial(os.Args[1], os.Args[2])
 
-			if warn(err) {
+			if err != nil {
+				log.Print(err)
 				return
 			}
 
@@ -78,9 +86,15 @@ func main() {
 			rslt := make(chan error, 1)
 			go stream(clnt, srvc, rslt)
 			go stream(srvc, clnt, rslt)
-			warn(<-rslt)
+
+			if err := <-rslt; err != nil {
+				log.Print(err)
+			}
 		}()
-
 	}
+}
 
+func stream(dst net.Conn, src net.Conn, rslt chan error) {
+	_, err := io.Copy(dst, src)
+	rslt <- err
 }
